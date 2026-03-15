@@ -1,285 +1,318 @@
-# Teleoperación Maestro–Esclavo con Retroalimentación de Fuerza usando ROS2 y xArm Lite6
+# Sistema de Teleoperación Bilateral Háptico con xArm Lite6
 
-## Descripción del Proyecto
-
-Este proyecto implementa un sistema de **teleoperación maestro–esclavo** utilizando dos robots **xArm Lite6**, donde:
-
-* El **robot maestro** es manipulado por el usuario.
-* El **robot esclavo** replica los movimientos del maestro en tiempo real.
-* Un **sensor de fuerza conectado a un ESP32** detecta contacto del robot esclavo con el entorno.
-* La fuerza detectada se transmite al maestro para generar **retroalimentación háptica**, creando un efecto de **muro virtual**.
-
-El sistema utiliza **ROS2**, **MoveIt Servo**, y **micro-ROS** para comunicación entre dispositivos.
+**Desarrollado por:** Eduardo Sánchez Martínez (Líder del Mañana)
+**Institución:** Tecnológico de Monterrey
+**Tecnologías:** ROS 2 Humble, Python, C++, MoveIt Servo, micro-ROS (ESP32)
 
 ---
 
-# Arquitectura del Sistema
+# 1. Descripción del Proyecto
 
-El sistema está compuesto por tres elementos principales:
+Este proyecto implementa un sistema de **teleoperación maestro–esclavo con retroalimentación háptica** utilizando dos manipuladores **xArm Lite6**. El objetivo principal es permitir que un operador controle remotamente un robot esclavo mientras recibe **retroalimentación de fuerza** cuando el robot remoto entra en contacto con un objeto.
 
-1. Robot Maestro (xArm Lite6)
-2. Robot Esclavo (xArm Lite6)
-3. Sensor de fuerza conectado a ESP32
+El sistema incluye:
 
-Todos los dispositivos se comunican mediante ROS2.
+* Un **robot maestro** manipulado por el operador.
+* Un **robot esclavo** que replica los movimientos del maestro.
+* Un **sensor de fuerza conectado a un ESP32**, encargado de medir la interacción con el entorno.
+* Un sistema de control que **bloquea físicamente el robot maestro** cuando se detecta una colisión.
 
-```
-                  Switch Ethernet
-         ┌─────────────┬─────────────┬─────────────┐
-         │             │             │
-     Laptop        Robot Maestro   Robot Esclavo
+Una característica importante del sistema es su **seguridad unidireccional**:
+
+* El robot maestro **se bloquea cuando el esclavo detecta una colisión**.
+* El operador puede **retroceder libremente para liberar el sistema**.
+
+Esto previene daños tanto al robot como al objeto con el que interactúa.
+
+---
+
+# 2. Arquitectura del Sistema
+
+## Hardware
+
+El sistema está compuesto por los siguientes elementos:
+
+* **Robot Maestro:** xArm Lite6 (modo de control de velocidad/estado).
+* **Robot Esclavo:** xArm Lite6 (modo seguidor).
+* **Sensor de Fuerza:** Celda de carga conectada a un ESP32.
+* **Laptop de control:** Ejecuta ROS2 y los nodos de control.
+* **Red de comunicación:** Conexión Ethernet para robots y WiFi para ESP32.
+
+### Topología de red
+
+```id="arch_net"
+                Switch Ethernet
+         ┌───────────┬───────────┬───────────┐
+         │           │           │
+      Laptop     Robot Maestro  Robot Esclavo
          │
          │ WiFi
          │
-       ESP32
+        ESP32
    (Sensor de fuerza)
 ```
 
-### Flujo de información
-
-1. El **robot maestro publica sus estados articulares**.
-2. El **robot esclavo sigue el movimiento del maestro** mediante control de velocidad.
-3. Cuando el esclavo interactúa con un objeto, el **sensor de fuerza mide la interacción**.
-4. La fuerza es publicada por el **ESP32 mediante micro-ROS**.
-5. Un nodo ROS2 calcula el **torque equivalente usando el Jacobiano**.
-6. El torque se aplica al robot maestro generando **retroalimentación háptica**.
+La laptop funciona como **centro de control**, ejecutando los nodos ROS2 y el **micro-ROS Agent** que conecta el ESP32 con el sistema ROS.
 
 ---
 
-# Tecnologías Utilizadas
+# 3. Arquitectura de Software
 
-* ROS2
-* MoveIt Servo
-* micro-ROS
-* Python (rclpy)
-* ESP32
-* Jacobiano de manipulador
-* Control de teleoperación maestro–esclavo
+El sistema utiliza **ROS2 Humble** para la comunicación entre dispositivos.
+
+## Topics principales
+
+| Topic                            | Tipo                   | Descripción                      |
+| -------------------------------- | ---------------------- | -------------------------------- |
+| `/force_esp32`                   | std_msgs/Float32       | Fuerza medida por el sensor      |
+| `/master/joint_states`           | sensor_msgs/JointState | Estado del robot maestro         |
+| `/slave/joint_states`            | sensor_msgs/JointState | Estado del robot esclavo         |
+| `/servo_server/delta_joint_cmds` | control_msgs/JointJog  | Comandos de velocidad al esclavo |
+| `/master/vc_set_joint_velocity`  | xarm_msgs/MoveVelocity | Comando de velocidad del maestro |
+
+## Servicios principales
+
+| Servicio            | Función                              |
+| ------------------- | ------------------------------------ |
+| `/master/set_state` | Controla el estado del robot maestro |
+| `/master/set_mode`  | Configura el modo de operación       |
 
 ---
 
-# Nodos del Sistema
+# 4. Control de Seguimiento Maestro–Esclavo
 
-## 1. Nodo de Seguimiento del Esclavo
+El robot esclavo sigue al maestro mediante control de velocidad utilizando:
 
-Este nodo permite que el robot esclavo siga al maestro mediante control de velocidad.
-
-Control implementado:
-
-```
+```id="ctrl_eq"
 q̇ = Kv q̇_master + Kp (q_master − q_slave)
 ```
 
-donde:
+Donde:
 
-* `q_master` posición del maestro
-* `q_slave` posición del esclavo
-* `Kv` ganancia de velocidad
-* `Kp` ganancia proporcional
+* `q_master` = posición del maestro
+* `q_slave` = posición del esclavo
+* `q̇_master` = velocidad del maestro
+* `Kv` = ganancia de velocidad
+* `Kp` = ganancia proporcional
 
 Este controlador permite:
 
-* Seguimiento rápido
-* Corrección de error de posición
-* Movimiento continuo y estable
+* seguimiento continuo
+* corrección de error de posición
+* movimientos suaves y estables
 
-### Topics
-
-Suscripciones:
-
-```
-/master/joint_states
-/slave/joint_states
-```
-
-Publicación:
-
-```
-/servo_server/delta_joint_cmds
-```
+El sistema corre a una frecuencia de aproximadamente **200–400 Hz**, permitiendo teleoperación en tiempo real.
 
 ---
 
-## 2. Nodo de Retroalimentación de Fuerza
+# 5. Conversión Fuerza → Torque
 
-Este nodo recibe la fuerza del sensor y calcula el torque equivalente en las articulaciones del robot maestro.
+Cuando el esclavo entra en contacto con un objeto, el sensor mide la fuerza y se calcula el torque equivalente en las articulaciones usando el **Jacobiano transpuesto**:
 
-### Conversión Fuerza → Torque
-
-Se utiliza el **Jacobiano transpuesto**:
-
-```
-τ = Jᵀ F
+```id="jac_eq"
+τ = JᵀF
 ```
 
-donde:
+Donde:
 
-* `J` Jacobiano del robot
-* `F` fuerza cartesiana
-* `τ` torque en articulaciones
+* `J` es el Jacobiano del robot
+* `F` es el vector de fuerza cartesiana
+* `τ` es el torque resultante
 
-### Topics
-
-Suscripciones:
-
-```
-/force_esp32
-/joint_states
-```
-
-Publicación:
-
-```
-/ufactory/joint_cmds
-```
+Esto permite transformar la fuerza medida en el efector final en torques equivalentes en cada articulación.
 
 ---
 
-# Sensor de Fuerza con ESP32
+# 6. Funcionalidades Implementadas
+
+## A. Control de Bloqueo por Colisión
+
+Cuando la fuerza medida supera un umbral definido:
+
+```id="thr_eq"
+F > 10.5 N
+```
+
+El sistema envía el comando:
+
+```id="brake_cmd"
+set_state(3)
+```
+
+Este comando activa los **frenos internos del robot maestro**, bloqueando físicamente el movimiento.
+
+---
+
+## B. Desbloqueo Automático por Retroceso
+
+Para evitar que el sistema quede bloqueado permanentemente, se monitorea el cambio de posición:
+
+```id="delta_q"
+Δq = q_actual − q_anterior
+```
+
+Si el operador intenta retroceder:
+
+```id="release_cond"
+Δq < −0.002
+```
+
+El sistema envía:
+
+```id="release_cmd"
+set_state(0)
+```
+
+Esto **libera los frenos del robot maestro**.
+
+---
+
+# 7. Lógica de Control Principal
+
+El comportamiento del sistema puede describirse con la siguiente lógica:
+
+```id="logic_block"
+if current_force > threshold and not locked:
+    call_service(state=3)   # Activar freno
+    locked = True
+
+if locked and delta_q < -0.002:
+    call_service(state=0)   # Liberar freno
+    locked = False
+```
+
+Esto garantiza que:
+
+* el robot se detenga ante colisiones
+* el operador pueda liberar el sistema fácilmente
+
+---
+
+# 8. Sensor de Fuerza con ESP32
 
 El ESP32 ejecuta un nodo **micro-ROS** que publica la fuerza medida.
 
 ### Topic publicado
 
-```
+```id="force_topic"
 /force_esp32
 ```
 
 Tipo de mensaje:
 
-```
+```id="force_msg"
 std_msgs/Float32
 ```
 
-Ejemplo de mensaje:
+Ejemplo:
 
+```id="force_ex"
+data: 12.3
 ```
-data: 3.5
-```
+
+El nodo ROS2 en la laptop utiliza esta información para calcular el torque equivalente.
 
 ---
 
-# Configuración de Red
+# 9. Registro de Datos (ROS Bag)
 
-Todos los dispositivos están conectados a la misma red local.
+Para análisis posterior, el sistema permite grabar todos los tópicos utilizando:
 
-Ejemplo de configuración IP:
-
-```
-Laptop:        192.168.1.10
-Robot Maestro: 192.168.1.208
-Robot Esclavo: 192.168.1.209
-ESP32:         192.168.1.50
+```id="rosbag_cmd"
+ros2 bag record -a -o grabacion_haptica
 ```
 
-La laptop ejecuta el **micro-ROS Agent**, que permite la comunicación entre el ESP32 y ROS2.
+Esto permite analizar posteriormente:
 
-### Ejecutar el agente
-
-```
-ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
-```
+* fuerzas
+* posiciones
+* tiempos de respuesta
 
 ---
 
-# Frecuencias del Sistema
+# 10. Resultados Esperados
 
-| Componente      | Frecuencia |
-| --------------- | ---------- |
-| Control esclavo | 200–500 Hz |
-| MoveIt Servo    | 400 Hz     |
-| Sensor ESP32    | 50–100 Hz  |
+## Gráfica de Posición
+
+Se espera observar:
+
+* movimiento continuo del maestro
+* una **meseta (plateau)** cuando ocurre el bloqueo
+
+## Gráfica de Fuerza
+
+Se observa:
+
+* un **pico de fuerza**
+* coincidencia temporal con la activación del freno
 
 ---
 
-# Seguridad del Sistema
+# 11. Seguridad del Sistema
 
-Para evitar comportamientos inestables se aplican varias protecciones:
+Se implementaron varias protecciones:
+
+### Saturación de fuerza
+
+```id="sat_force"
+F = clip(F, -Fmax, Fmax)
+```
 
 ### Saturación de torque
 
-```
-τ = clip(τ, -τ_max, τ_max)
-```
-
-### Saturación de velocidad
-
-```
-q̇ = clip(q̇, -v_max, v_max)
+```id="sat_tau"
+τ = clip(τ, -τmax, τmax)
 ```
 
-### Filtro de fuerza
+### Filtro de ruido
 
-Se utiliza un promedio móvil para reducir ruido del sensor.
-
-### Umbral de contacto
-
-```
-if |F| < threshold:
-    F = 0
-```
+Promedio móvil de la fuerza para reducir ruido del sensor.
 
 ---
 
-# Comportamiento Esperado
+# 12. Aplicaciones
 
-### Sin contacto
+Este sistema puede aplicarse en:
 
-```
-Maestro → movimiento libre
-Esclavo → replica movimiento
-```
-
-### Con contacto
-
-```
-Esclavo toca objeto
-        ↓
-Sensor detecta fuerza
-        ↓
-τ = JᵀF
-        ↓
-Maestro siente resistencia
-```
-
-Esto genera un **muro virtual** que impide que el operador continúe moviendo el robot.
+* teleoperación remota
+* manipulación de objetos delicados
+* robótica médica
+* cirugía asistida por robot
+* robótica colaborativa
+* investigación en control háptico
 
 ---
 
-# Aplicaciones
+# 13. Posibles Mejoras
 
-Este tipo de sistema se utiliza en:
+El sistema puede mejorarse con:
 
-* Teleoperación robótica
-* Manipulación remota
-* Robótica médica
-* Cirugía robótica
-* Control háptico
-* Robótica colaborativa
-
----
-
-# Posibles Mejoras
-
-1. Control bilateral completo (4-channel control)
-2. Compensación de latencia
-3. Modelado dinámico del robot
-4. Control de impedancia
-5. Sensores de fuerza de 6 ejes
-6. Control adaptativo
+* Control bilateral completo (4-channel control)
+* Compensación de latencia
+* Control de impedancia
+* Sensores de fuerza de 6 ejes
+* Modelado dinámico del robot
+* Control adaptativo
 
 ---
 
-# Referencias
+# 14. Referencias
 
 * Siciliano, B. – *Robotics: Modelling, Planning and Control*
-* Craig, J. – *Introduction to Robotics*
-* Documentación de ROS2
+* Craig, J. – *Introduction to Robotics: Mechanics and Control*
+* Documentación oficial de ROS2
 * Documentación de MoveIt Servo
 * Documentación de micro-ROS
 
 ---
 
-# Autor
+# 15. Conclusión
 
-Proyecto de teleoperación maestro–esclavo desarrollado con ROS2 y xArm Lite6.
+Este proyecto demuestra la implementación de un sistema de **teleoperación robótica con retroalimentación háptica**, integrando:
+
+* control maestro–esclavo
+* sensores de fuerza
+* control basado en Jacobiano
+* comunicación distribuida mediante ROS2
+
+El sistema logra proporcionar **retroalimentación física al operador**, mejorando la percepción del entorno remoto y aumentando la seguridad de la manipulación robótica.
