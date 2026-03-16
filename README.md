@@ -33,7 +33,7 @@ El sistema está compuesto por los siguientes elementos:
 
 ```id="arch_net"
                 Switch Ethernet
-         ┌───────────┬───────────┬───────────┐
+         ┌───────────┬───────────┬
          │           │           │
       Laptop     Robot Maestro  Robot Esclavo
          │
