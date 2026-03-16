@@ -4,6 +4,13 @@
 **Tecnologías:** ROS 2 Humble, Python, MoveIt Servo, micro-ROS (ESP32)
 
 ---
+## Workspace structure
+
+teleop/        ROS2 package
+docs/       documentation and report
+ros_bag_data/       rosbag recordings
+firmware/   microcontroller code (ESP32)
+
 
 # 1. Descripción del Proyecto
 
