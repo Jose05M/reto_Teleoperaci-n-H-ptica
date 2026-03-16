@@ -72,8 +72,8 @@ Este nodo gestiona la retroalimentación háptica del sistema.
 - Se suscribe a la fuerza medida por el sensor (`/force_esp32`).
 - Monitorea las posiciones articulares del robot maestro (`/master/joint_states`).
 - Detecta colisiones cuando la fuerza supera un umbral establecido.
-- Activa los frenos internos del robot maestro mediante el servicio `set_state(3)` para detener el movimiento.
-- Implementa un **auto-reset**, liberando los frenos (`set_state(0)`) cuando el operador mueve el brazo en dirección contraria al impacto.
+- Activa los frenos internos del robot maestro mediante el servicio `set_state(3)` para detener el movimiento y mostrar resistencia.
+- Liberando los frenos cuando el operador mueve el brazo en dirección contraria al impacto.
 
 ### Nodo Esclavo (Follower Control)
 
