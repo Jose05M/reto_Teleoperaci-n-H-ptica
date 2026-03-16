@@ -184,13 +184,9 @@ El nodo ROS2 en la laptop utiliza esta información para calcular el torque equi
 Se conectaron ambos robots (Maestro y Esclavo) mediante cables Ethernet a un switch de red común a la computadora de control.
 Se configuró una dirección IP estática en la estación de trabajo dentro del rango de los robots (ej. 192.168.1.115).
 
-
----
-
 ## 2. Acceso a la Interfaz uFactory Studio
 Se debe abrir un un navegador web e ingresar la dirección IP del robot maestro (ej. 192.168.1.175) para acceder a la interfaz de control embebida. Dentro de la configuración se activo el modo manual.
 
----
 ## 3. Inicialización de la Interfaz ROS2 con los Robots
 Este proceso habilita los drivers ROS2, MoveIt y MoveIt Servo, permitiendo que los tópicos y servicios del robot estén disponibles. Se debe inicializar el robot maestro y esclavo, ejecutando esto en dos terminales diferentes:
 ```
@@ -198,12 +194,9 @@ ros2 launch xarm_api xarm6_driver.launch.py robot_ip:=192.168.1.175 hw_ns:=maste
 ros2 launch xarm_xarm_moveit_servo lite6_moveit_servo_realmove.launch.py robot_ip:=192.168.1.167 hw_ns:=slave
 ```
 
----
 ## 4. Cargar codigo al ESP32
 
 Se debe cargar el codigo desarrollado en el microcontrolador. Este condigo publica el valor de fuerza medida.
-
----
 
 ## 5. Ejecutar el micro-ROS agent
 Se debe ejecutar el micro-ROS agent para que el topico de fuerza sea visible por los demas nodos.
@@ -211,8 +204,6 @@ Se debe ejecutar el micro-ROS agent para que el topico de fuerza sea visible por
 ```
 ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
 ```
-
----
 
 ## 6. Verificar nodos
 
@@ -228,7 +219,6 @@ Se pueden observar los topicos necesarios:
 /servo_server/delta_joint_cmds
 /slave/joint_states
 ```
----
 
 ## 7. Ejecutar los nodos del sistema
 Una vez preparado el sistema, procedemos a ejecutar los nodos correspondientes del maestro y el esclavo, cada uno se corre en una terminal diferente.
@@ -238,14 +228,13 @@ ros2 run teleop master
 ros2 run teleop slave
 ```
 
----
-
 ## 8. Graficar
 
 Mientras el sistema se este ejecutando, ejecutamos el nodo que se encarga de graficar la fuerza recibida, asi como los torques articulares y el error de los joints entre el maestro y esclavo
 ```
 ros2 run teleop plot
 ```
+---
 
 # 8. Registro de Datos (ROS Bag)
 
@@ -259,8 +248,6 @@ Y para su posterior analisis solo basta con ejecutar lo siguiente:
 ros2 bag info nombre_de_tu_carpeta
 ```
 Una vez echo esto, podemos graficar los datos ejecutando el nodo que grafica los datos.
-
----
 
 Esto permite analizar posteriormente:
 
