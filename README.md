@@ -152,28 +152,7 @@ Esto **libera los frenos del robot maestro**.
 
 ---
 
-# 7. Lógica de Control Principal
-
-El comportamiento del sistema puede describirse con la siguiente lógica:
-
-```id="logic_block"
-if current_force > threshold and not locked:
-    call_service(state=3)   # Activar freno
-    locked = True
-
-if locked and delta_q < -0.002:
-    call_service(state=0)   # Liberar freno
-    locked = False
-```
-
-Esto garantiza que:
-
-* el robot se detenga ante colisiones
-* el operador pueda liberar el sistema fácilmente
-
----
-
-# 8. Sensor de Fuerza con ESP32
+# 7. Sensor de Fuerza con ESP32
 
 El ESP32 ejecuta un nodo **micro-ROS** que publica la fuerza medida.
 
@@ -199,13 +178,89 @@ El nodo ROS2 en la laptop utiliza esta información para calcular el torque equi
 
 ---
 
-# 9. Registro de Datos (ROS Bag)
+# 8. Ejecución del Sistema
+
+## 1. Establecimiento de la Red Local
+Se conectaron ambos robots (Maestro y Esclavo) mediante cables Ethernet a un switch de red común a la computadora de control.
+Se configuró una dirección IP estática en la estación de trabajo dentro del rango de los robots (ej. 192.168.1.115).
+
+
+---
+
+## 2. Acceso a la Interfaz uFactory Studio
+Se debe abrir un un navegador web e ingresar la dirección IP del robot maestro (ej. 192.168.1.175) para acceder a la interfaz de control embebida. Dentro de la configuración se activo el modo manual.
+
+---
+## 3. Inicialización de la Interfaz ROS2 con los Robots
+Este proceso habilita los drivers ROS2, MoveIt y MoveIt Servo, permitiendo que los tópicos y servicios del robot estén disponibles. Se debe inicializar el robot maestro y esclavo, ejecutando esto en dos terminales diferentes:
+```
+ros2 launch xarm_api xarm6_driver.launch.py robot_ip:=192.168.1.175 hw_ns:=master
+ros2 launch xarm_xarm_moveit_servo lite6_moveit_servo_realmove.launch.py robot_ip:=192.168.1.167 hw_ns:=slave
+```
+
+---
+## 4. Cargar codigo al ESP32
+
+Se debe cargar el codigo desarrollado en el microcontrolador. Este condigo publica el valor de fuerza medida.
+
+---
+
+## 5. Ejecutar el micro-ROS agent
+Se debe ejecutar el micro-ROS agent para que el topico de fuerza sea visible por los demas nodos.
+
+```
+ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888
+```
+
+---
+
+## 6. Verificar nodos
+
+Verificamos que todos los topicos existe.
+```
+ros2 topic list
+```
+Se pueden observar los topicos necesarios:
+```
+/force_esp32
+/master/joint_states
+/master/robot_states
+/servo_server/delta_joint_cmds
+/slave/joint_states
+```
+---
+
+## 7. Ejecutar los nodos del sistema
+Una vez preparado el sistema, procedemos a ejecutar los nodos correspondientes del maestro y el esclavo, cada uno se corre en una terminal diferente.
+
+```
+ros2 run teleop master
+ros2 run teleop slave
+```
+
+---
+
+## 8. Graficar
+
+Mientras el sistema se este ejecutando, ejecutamos el nodo que se encarga de graficar la fuerza recibida, asi como los torques articulares y el error de los joints entre el maestro y esclavo
+```
+ros2 run teleop plot
+```
+
+# 8. Registro de Datos (ROS Bag)
 
 Para análisis posterior, el sistema permite grabar todos los tópicos utilizando:
 
 ```id="rosbag_cmd"
-ros2 bag record -a -o grabacion_haptica
+ros2 bag record -a -o grabacion_completa_haptica
 ```
+Y para su posterior analisis solo basta con ejecutar lo siguiente:
+```
+ros2 bag info nombre_de_tu_carpeta
+```
+Una vez echo esto, podemos graficar los datos ejecutando el nodo que grafica los datos.
+
+---
 
 Esto permite analizar posteriormente:
 
@@ -215,89 +270,20 @@ Esto permite analizar posteriormente:
 
 ---
 
-# 10. Resultados Esperados
 
-## Gráfica de Posición
+# 14. Conclusión
 
-Se espera observar:
-
-* movimiento continuo del maestro
-* una **meseta (plateau)** cuando ocurre el bloqueo
-
-## Gráfica de Fuerza
-
-Se observa:
-
-* un **pico de fuerza**
-* coincidencia temporal con la activación del freno
-
----
-
-# 11. Seguridad del Sistema
-
-Se implementaron varias protecciones:
-
-### Saturación de fuerza
-
-```id="sat_force"
-F = clip(F, -Fmax, Fmax)
-```
-
-### Saturación de torque
-
-```id="sat_tau"
-τ = clip(τ, -τmax, τmax)
-```
-
-### Filtro de ruido
-
-Promedio móvil de la fuerza para reducir ruido del sensor.
-
----
-
-# 12. Aplicaciones
-
-Este sistema puede aplicarse en:
-
-* teleoperación remota
-* manipulación de objetos delicados
-* robótica médica
-* cirugía asistida por robot
-* robótica colaborativa
-* investigación en control háptico
-
----
-
-# 13. Posibles Mejoras
-
-El sistema puede mejorarse con:
-
-* Control bilateral completo (4-channel control)
-* Compensación de latencia
-* Control de impedancia
-* Sensores de fuerza de 6 ejes
-* Modelado dinámico del robot
-* Control adaptativo
-
----
-
-# 14. Referencias
-
-* Siciliano, B. – *Robotics: Modelling, Planning and Control*
-* Craig, J. – *Introduction to Robotics: Mechanics and Control*
-* Documentación oficial de ROS2
-* Documentación de MoveIt Servo
-* Documentación de micro-ROS
-
----
-
-# 15. Conclusión
-
-Este proyecto demuestra la implementación de un sistema de **teleoperación robótica con retroalimentación háptica**, integrando:
+Este proyecto demuestra la implementación de un sistema de teleoperación robótica con retroalimentación háptica, integrando:
 
 * control maestro–esclavo
 * sensores de fuerza
 * control basado en Jacobiano
 * comunicación distribuida mediante ROS2
 
-El sistema logra proporcionar **retroalimentación física al operador**, mejorando la percepción del entorno remoto y aumentando la seguridad de la manipulación robótica.
+El sistema logra proporcionar retroalimentación física al operador, mejorando la percepción del entorno remoto y aumentando la seguridad de la manipulación robótica.
+
+# Autores
+Jose Eduardo Sanchez Martinez		      IRS | A01738476;
+Josue Ureña Valencia				IRS | A01738940;
+César Arellano Arellano			      IRS | A00839373;
+Rafael André Gamiz Salazar			IRS | A00838280;
