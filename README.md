@@ -115,7 +115,7 @@ Esto permite transformar la fuerza medida en el efector final en torques equival
 Cuando la fuerza medida supera un umbral definido:
 
 ```id="thr_eq"
-F > 10.5 N
+F > 6.5 N
 ```
 
 El sistema envía el comando:
